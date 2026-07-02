@@ -313,6 +313,45 @@
       color: #fff;
     }
 
+    .report {
+      display: grid;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .report-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 8px;
+    }
+
+    .report-cell {
+      border-radius: 8px;
+      background: #f3eedf;
+      padding: 10px;
+      text-align: center;
+    }
+
+    .report-cell strong {
+      display: block;
+      color: var(--blue);
+      font-size: 20px;
+    }
+
+    .weak-list {
+      margin: 0;
+      padding-left: 18px;
+    }
+
+    .copy-note {
+      min-height: 20px;
+      color: var(--green);
+      font-weight: 800;
+      text-align: center;
+    }
+
     .word-list {
       display: grid;
       gap: 7px;
@@ -511,6 +550,21 @@
         <section class="panel">
           <h2>今日小目标</h2>
           <div class="daily" id="dailyDots"></div>
+        </section>
+        <section class="panel">
+          <h2>家长报告</h2>
+          <div class="report">
+            <div class="report-grid">
+              <div class="report-cell"><strong id="todayDone">0</strong><span>今日完成</span></div>
+              <div class="report-cell"><strong id="weakCount">0</strong><span>待复习</span></div>
+            </div>
+            <div>
+              <strong>需要关注</strong>
+              <ol class="weak-list" id="weakList"></ol>
+            </div>
+            <button class="btn blue" id="copyReportBtn">复制报告</button>
+            <div class="copy-note" id="copyNote"></div>
+          </div>
         </section>
         <section class="panel">
           <h2 id="wordListTitle">当前词表</h2>
@@ -951,6 +1005,7 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
       updateStats();
       renderList();
       renderDaily();
+      renderParentReport();
     }
 
     function getRecord(word) {
@@ -1113,6 +1168,55 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
       }
     }
 
+    function weakWords() {
+      return words
+        .map(item => ({ item, rec: getRecord(item.word) }))
+        .filter(({ rec }) => rec.again > 0 || (rec.know + rec.spell === 0))
+        .sort((a, b) => {
+          const as = a.rec.again * 3 - a.rec.know - a.rec.spell;
+          const bs = b.rec.again * 3 - b.rec.know - b.rec.spell;
+          return bs - as;
+        })
+        .slice(0, 6);
+    }
+
+    function reportText() {
+      const daily = state.progress._daily || {};
+      const done = daily[todayKey] || 0;
+      const entries = Object.entries(state.progress).filter(([key]) => !key.startsWith("_"));
+      const learned = entries.filter(([, rec]) => rec.know > 0).length;
+      const spelled = entries.filter(([, rec]) => rec.spell > 0).length;
+      const weak = weakWords();
+      const weakText = weak.length
+        ? weak.map(({ item, rec }, index) => `${index + 1}. ${item.word}（${item.meaning}，再练${rec.again || 0}次）`).join("\n")
+        : "暂无明显错词";
+      return `英语练习报告 ${todayKey}
+今日完成：${done}/${DAILY_TARGET}
+累计认识：${learned}
+累计拼对：${spelled}
+需要关注：
+${weakText}`;
+    }
+
+    function renderParentReport() {
+      const daily = state.progress._daily || {};
+      const done = daily[todayKey] || 0;
+      const weak = weakWords();
+      el("todayDone").textContent = `${done}/${DAILY_TARGET}`;
+      el("weakCount").textContent = weak.length;
+      el("weakList").innerHTML = "";
+      weak.forEach(({ item, rec }) => {
+        const li = document.createElement("li");
+        li.textContent = `${item.word} - ${item.meaning}（再练 ${rec.again || 0}）`;
+        el("weakList").appendChild(li);
+      });
+      if (!weak.length) {
+        const li = document.createElement("li");
+        li.textContent = "暂无明显错词";
+        el("weakList").appendChild(li);
+      }
+    }
+
     function renderList() {
       el("wordList").innerHTML = "";
       if (state.mode !== "flash") {
@@ -1182,11 +1286,21 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
     el("spellInput").addEventListener("keydown", event => {
       if (event.key === "Enter") el("checkSpellBtn").click();
     });
+    el("copyReportBtn").addEventListener("click", async () => {
+      const text = reportText();
+      try {
+        await navigator.clipboard.writeText(text);
+        el("copyNote").textContent = "已复制，可以发给家长";
+      } catch {
+        el("copyNote").textContent = text;
+      }
+    });
 
     renderTopics();
     resetFilter();
     updateStats();
     renderDaily();
+    renderParentReport();
   </script>
 </body>
 </html>
