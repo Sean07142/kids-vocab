@@ -548,14 +548,16 @@
 
       <aside class="side">
         <section class="panel">
-          <h2>今日小目标</h2>
+          <h2 id="dailyTitle">单词卡目标</h2>
           <div class="daily" id="dailyDots"></div>
         </section>
         <section class="panel">
           <h2>家长报告</h2>
           <div class="report">
             <div class="report-grid">
-              <div class="report-cell"><strong id="todayDone">0</strong><span>今日完成</span></div>
+              <div class="report-cell"><strong id="flashDone">0/20</strong><span>单词卡</span></div>
+              <div class="report-cell"><strong id="quizDone">0/20</strong><span>认意思</span></div>
+              <div class="report-cell"><strong id="spellDone">0/20</strong><span>拼写</span></div>
               <div class="report-cell"><strong id="weakCount">0</strong><span>待复习</span></div>
             </div>
             <div>
@@ -1059,10 +1061,30 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
       window.speechSynthesis.speak(utter);
     }
 
-    function markDaily() {
+    function modeLabel(mode = state.mode) {
+      return ({ flash: "单词卡", quiz: "认意思", spell: "拼写" })[mode] || "练习";
+    }
+
+    function dailyBucket() {
       const rec = state.progress._daily || {};
-      rec[todayKey] = Math.min(DAILY_TARGET, (rec[todayKey] || 0) + 1);
+      const today = rec[todayKey];
+      if (typeof today === "number") {
+        rec[todayKey] = { flash: today, quiz: 0, spell: 0 };
+      } else if (!today) {
+        rec[todayKey] = { flash: 0, quiz: 0, spell: 0 };
+      }
       state.progress._daily = rec;
+      return rec[todayKey];
+    }
+
+    function dailyCount(mode = state.mode) {
+      const today = dailyBucket();
+      return today[mode] || 0;
+    }
+
+    function markDaily(mode = state.mode) {
+      const today = dailyBucket();
+      today[mode] = Math.min(DAILY_TARGET, (today[mode] || 0) + 1);
     }
 
     function renderFlash() {
@@ -1150,15 +1172,22 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
       const daily = state.progress._daily || {};
       let streak = 0;
       const date = new Date();
-      while (daily[date.toISOString().slice(0, 10)] > 0) {
+      while (dailyTotal(daily[date.toISOString().slice(0, 10)]) > 0) {
         streak += 1;
         date.setDate(date.getDate() - 1);
       }
       el("streakCount").textContent = streak;
     }
 
+    function dailyTotal(value) {
+      if (typeof value === "number") return value;
+      if (!value) return 0;
+      return (value.flash || 0) + (value.quiz || 0) + (value.spell || 0);
+    }
+
     function renderDaily() {
-      const done = (state.progress._daily || {})[todayKey] || 0;
+      const done = dailyCount(state.mode);
+      el("dailyTitle").textContent = `${modeLabel()}目标`;
       el("dailyDots").innerHTML = "";
       for (let i = 1; i <= DAILY_TARGET; i++) {
         const dot = document.createElement("div");
@@ -1181,8 +1210,7 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
     }
 
     function reportText() {
-      const daily = state.progress._daily || {};
-      const done = daily[todayKey] || 0;
+      const today = dailyBucket();
       const entries = Object.entries(state.progress).filter(([key]) => !key.startsWith("_"));
       const learned = entries.filter(([, rec]) => rec.know > 0).length;
       const spelled = entries.filter(([, rec]) => rec.spell > 0).length;
@@ -1191,7 +1219,9 @@ complete|完成|Complete the sentence with one word.|/kəmˈpliːt/|6|表达
         ? weak.map(({ item, rec }, index) => `${index + 1}. ${item.word}（${item.meaning}，再练${rec.again || 0}次）`).join("\n")
         : "暂无明显错词";
       return `英语练习报告 ${todayKey}
-今日完成：${done}/${DAILY_TARGET}
+单词卡：${today.flash || 0}/${DAILY_TARGET}
+认意思：${today.quiz || 0}/${DAILY_TARGET}
+拼写：${today.spell || 0}/${DAILY_TARGET}
 累计认识：${learned}
 累计拼对：${spelled}
 需要关注：
@@ -1199,10 +1229,11 @@ ${weakText}`;
     }
 
     function renderParentReport() {
-      const daily = state.progress._daily || {};
-      const done = daily[todayKey] || 0;
+      const today = dailyBucket();
       const weak = weakWords();
-      el("todayDone").textContent = `${done}/${DAILY_TARGET}`;
+      el("flashDone").textContent = `${today.flash || 0}/${DAILY_TARGET}`;
+      el("quizDone").textContent = `${today.quiz || 0}/${DAILY_TARGET}`;
+      el("spellDone").textContent = `${today.spell || 0}/${DAILY_TARGET}`;
       el("weakCount").textContent = weak.length;
       el("weakList").innerHTML = "";
       weak.forEach(({ item, rec }) => {
@@ -1247,6 +1278,8 @@ ${weakText}`;
       tab.addEventListener("click", () => {
         state.mode = tab.dataset.mode;
         renderMode();
+        renderDaily();
+        renderParentReport();
       });
     });
 
